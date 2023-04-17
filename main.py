@@ -38,10 +38,10 @@ def pad_collate(batch):
         input_tensor, label = item
         padded_input = torch.zeros(max_length, input_tensor.shape[1])
         padded_input[: input_tensor.shape[0], :] = input_tensor
-        padded_inputs.append(padded_input.unsqueeze(0)) # 수정된 부분
+        padded_inputs.append(padded_input.unsqueeze(0)) 
         labels.append(label)
 
-    padded_inputs = torch.cat(padded_inputs, dim=0) # 수정된 부분
+    padded_inputs = torch.cat(padded_inputs, dim=0) 
     labels = torch.tensor(labels)
     return padded_inputs, labels
 
