@@ -10,8 +10,14 @@ from torch.utils.data import Dataset, DataLoader
 from tqdm import tqdm
 import pickle
 
-from pre_data import *
-from model import *
+from pre_data import AudioDataset
+from model import Transformer
+
+def create_padding_mask(seq):
+    seq = torch.tensor(seq, dtype=torch.float32)
+    mask = (seq == 0).unsqueeze(1).unsqueeze(2)
+    return mask
+
 
 def train(model, train_loader, criterion, optimizer, device):
     model.train()
@@ -21,12 +27,13 @@ def train(model, train_loader, criterion, optimizer, device):
 
         optimizer.zero_grad()
 
-        outputs = model(inputs)
+        outputs = model(inputs, create_padding_mask(inputs))
         loss = criterion(outputs, labels)
         loss.backward()
         optimizer.step()
 
         running_loss += loss.item()
+        
     return running_loss / len(train_loader)
 
 def pad_collate(batch):
@@ -38,10 +45,10 @@ def pad_collate(batch):
         input_tensor, label = item
         padded_input = torch.zeros(max_length, input_tensor.shape[1])
         padded_input[: input_tensor.shape[0], :] = input_tensor
-        padded_inputs.append(padded_input.unsqueeze(0)) # 수정된 부분
+        padded_inputs.append(padded_input.unsqueeze(0)) 
         labels.append(label)
 
-    padded_inputs = torch.cat(padded_inputs, dim=0) # 수정된 부분
+    padded_inputs = torch.cat(padded_inputs, dim=0) 
     labels = torch.tensor(labels)
     return padded_inputs, labels
 
@@ -53,7 +60,7 @@ def evaluate(model, val_loader, criterion, device):
     with torch.no_grad():
         for inputs, labels in tqdm(val_loader):
             inputs, labels = inputs.to(device), labels.to(device)
-            outputs = model(inputs)
+            outputs = model(inputs, create_padding_mask(inputs))
             loss = criterion(outputs, labels)
             running_loss += loss.item()
 
@@ -77,6 +84,7 @@ def main():
 
     input_size = 128 # Set to the number of Mel features used
     num_classes = 209 # Set to the number of classes in your dataset
+    device = "cuda:0"
     
     train_dataset = AudioDataset(train_file_paths, train_labels)
     train_loader = DataLoader(train_dataset, batch_size=4, shuffle=True, num_workers=4, collate_fn=pad_collate)
@@ -84,9 +92,14 @@ def main():
     val_dataset = AudioDataset(val_file_paths, val_labels)
     val_loader = DataLoader(val_dataset, batch_size=2, shuffle=False, num_workers=4, collate_fn=pad_collate)
 
-    model = TransformerAudioClassifier(input_size, num_classes).to("cuda:0")
+    model = Transformer(num_classes,
+                        6,
+                        8,
+                        512,
+                        2048,
+                        0.01, ).to(device)
 
-    criterion = nn.CrossEntropyLoss()
+    criterion = nn.CrossEntropyLoss().to(device)
     op = torch.optim.Adam(model.parameters(), lr=0.001)
     num_epochs = 10
     best_loss = float('inf')
@@ -95,8 +108,8 @@ def main():
 
     for epoch in range(num_epochs):
         print(f"Epoch {epoch+1}/{num_epochs}")
-        train_loss = train(model, train_loader, criterion, op, "cuda:0")
-        val_loss, val_accuracy = evaluate(model, val_loader, criterion, "cuda:0")
+        train_loss = train(model, train_loader, criterion, op, device)
+        val_loss, val_accuracy = evaluate(model, val_loader, criterion, device)
         print(f"Train Loss: {train_loss:.4f}, Val Loss: {val_loss:.4f}, Val Accuracy: {val_accuracy:.4f}")
 
         # Save the model with the best validation loss
